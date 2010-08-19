@@ -2,7 +2,7 @@
 v0.1 - 2010/08/19
 
 ## Description
-ianFS allows on-the-fly modification of files as they are sent from the browser to the user.
+ianFS allows on-the-fly modification of files as they are sent from the server to the user.
 
 This means you could change the ID3 tags on an MP3 while it was being transferred, or modify EXIF tags in a JPEG file before sending it to the browser.
 
