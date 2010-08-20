@@ -9,24 +9,163 @@
  */
 
 class ianFS {
-	private $buffer = null;			// Temporary buffer storage if needed
-	private $chunkCount = 0;		// Chunk counter
-	private $chunkMaximum = 8192;		// Maximum chunk size
-	private $chunkMinimum = 512;		// Minimum chunk size
-	private $chunkSize = -1;		// Immutable chunk size used
-	private $currentPosition = -1;		// Current position within the file
-	private $file;				// File name
-	private $handle = null;			// File handle
-	private $modificationTime = -1;		// File modification time
-	private $newname;			// New file name
-	private $open = false;			// Is the file currently open
-	private $size = -1;			// File size in bytes
-	private $trigger = false;		// Has the metatag trigger been found
-	private $type = null;			// File type (extension, usually)
-	protected $metaAllowed = array();	// Array of allowed meta tags
-	protected $overlap = 0;			// Bytes of chunk overlap required
-	public $chunk = 4096;			// Bytes per chunk
-	public $forceDownload = false;		// Force browser download
+	/**
+	 * Buffer storage.
+	 *
+	 * Temporary buffer storage is only used if the hasTriggerStart() and
+	 * hasTriggerEnd() occur in different chunks.
+	 *
+	 * @var string
+	 */
+	private $buffer = null;
+
+	/**
+	 * Chunk counter.
+	 *
+	 * The number of chunks used for this file.
+	 *
+	 * @var int
+	 */
+	private $chunkCount = 0;
+
+	/**
+	 * Maximum chunk size.
+	 *
+	 * @var int
+	 */
+	private $chunkMaximum = 8192;
+
+	/**
+	 * Minimum chunk size.
+	 *
+	 * @var int
+	 */
+	private $chunkMinimum = 512;
+
+	/**
+	 * Actual chunk size used.
+	 *
+	 * This is a private value (immutable by child classes during transfer)
+	 * to prevent the chunk size from changing during processing.
+	 *
+	 * @var int
+	 */
+	private $chunkSize = -1;
+
+	/**
+	 * Stream cursor position.
+	 *
+	 * The number of bytes into the file the current buffer begins.
+	 *
+	 * @var int
+	 */
+	private $currentPosition = -1;
+
+	/**
+	 * Name of the file to stream.
+	 *
+	 * This is either a relative or complete path to the file, including
+	 * the file name.
+	 *
+	 * @var string
+	 */
+	private $file;
+
+	/**
+	 * PHP file handle object.
+	 *
+	 * @var object
+	 */
+	private $handle = null;
+
+	/**
+	 * File modification time as a UNIX timestamp value.
+	 *
+	 * @var int
+	 */
+	private $modificationTime = -1;
+
+	/**
+	 * The $file will be delivered to the user with this name.
+	 *
+	 * @var string
+	 */
+	private $newname;
+
+	/**
+	 * Is the file currently being streamed?
+	 *
+	 * @var bool
+	 */
+	private $open = false;
+
+	/**
+	 * File size, in bytes.
+	 *
+	 * @var int
+	 */
+	private $size = -1;
+
+	/**
+	 * Metatag block is part of the current buffer.
+	 *
+	 * This remains TRUE between hasTriggerStart() and hasTriggerEnd(). Once
+	 * editMeta() is called, value becomes FALSE.
+	 *
+	 *
+	 * @var bool
+	 */
+	private $trigger = false;
+
+	/**
+	 * File type (file extentsion, usually).
+	 *
+	 * This can be overridden during the factory call. For example, instead
+	 * of creating classes for both JPG and JPEG extensions, you can force
+	 * *.jpeg files to be treated as JPG file types.
+	 *
+	 * @var string
+	 */
+	private $type = null;
+
+	/**
+	 * Array of valid metatags.
+	 *
+	 * @var array
+	 */
+	protected $metaAllowed = array();
+
+	/**
+	 * Overlap between chunks, in bytes.
+	 *
+	 * The overlap is to ensure that a complete trigger can be found. It
+	 * should be set to 1 byte longer than the maximum trigger length. For
+	 * example, the trigger for ID3v2 tags is 'ID3', so overlap should be 4.
+	 *
+	 * @var int
+	 */
+	protected $overlap = 0;
+
+	/**
+	 * Size of each chunk, in bytes.
+	 *
+	 * The actual chunk size used is determined by chunkMaximum and
+	 * chunkMinimum if this value is outside of their range.
+	 *
+	 * @var int
+	 */
+	public $chunk = 4096;
+
+	/**
+	 * Force browser download.
+	 *
+	 * Using headers, this will force the browser to display an Open/Save
+	 * dialog box instead of loading the browser's default helper
+	 * application for this file type.
+	 *
+	 * @var bool
+	 */
+	public $forceDownload = false;
 
 	/**
 	 * Loads a class based on the filetype. If none exists, uses itself as a
@@ -63,11 +202,14 @@ class ianFS {
 		}
 		return $return;
 	}
+
 	/**
 	 * Stores the filename, filetype and rename (if used), and checks for
 	 * file existence.
 	 *
 	 * @param string $file Complete or relative location of file.
+	 * @param string $filetype Optional filetype (defaults to file extension).
+	 * @param string $newname Streams the file with a different name (defaults to null).
 	 */
 	public function __construct($file, $filetype, $newname) {
 		if(!file_exists($file)) {
@@ -78,6 +220,7 @@ class ianFS {
 		$this->type = $filetype;
 		$this->newname = $newname;
 	}
+
 	/**
 	 * Opens file handle for streaming and sets immutable chunk size.
 	 */
@@ -99,10 +242,11 @@ class ianFS {
 			}
 		}
 	}
+
 	/**
 	 * Returns a stream of $this->chunkSize bytes from the file. If the
-	 * metatag block falls over multiple chunks, the return is all the
-	 * chunks that contain the metablock.
+	 * metatag block falls over multiple chunks, the return is NULL until
+	 * the end of the metatag block is detected.
 	 *
 	 * @return string
 	 */
@@ -137,6 +281,7 @@ class ianFS {
 		}
 		return $return;
 	}
+
 	/**
 	 * Closes the file handle if needed.
 	 */
@@ -147,6 +292,7 @@ class ianFS {
 			$this->open = false;
 		}
 	}
+
 	/**
 	 * Resets file info variables and closes the file handle if needed.
 	 */
@@ -155,6 +301,7 @@ class ianFS {
 		$this->modificationTime = -1;
 		$this->size = -1;
 	}
+
 	/**
 	 * Checks whether the current file is open.
 	 *
@@ -163,6 +310,7 @@ class ianFS {
 	public function open() {
 		return $this->open;
 	}
+
 	/**
 	 * Returns the UNIX timestamp the file was last modified. Failing that,
 	 * returns the current UNIX timestamp from the server.
@@ -178,6 +326,7 @@ class ianFS {
 		}
 		return $this->modificationTime;
 	}
+
 	/**
 	 * Returns the size in bytes of the file.
 	 *
@@ -189,6 +338,7 @@ class ianFS {
 		}
 		return $this->size;
 	}
+
 	/**
 	 * Forces the browser to show the Open/Save dialog box instead of
 	 * displaying a helper application.
@@ -203,6 +353,7 @@ class ianFS {
 		header('Pragma: public');
 		header('Content-Length: '.$this->getSize());
 	}
+
 	/**
 	 * Checks whether a given tag is available for this file type.
 	 *
@@ -216,14 +367,20 @@ class ianFS {
 		}
 		return $return;
 	}
+
 	/**
 	 * Returns the name of the class being used.
+	 *
+	 * For example, if the file type is "mp3" and there is a child class
+	 * loaded from "ianfs.mp3.php", this function will return "mp3". If no
+	 * child class was loaded, it will return "ianFS".
 	 *
 	 * @return string Name of the current class.
 	 */
 	public function getType() {
 		return get_class($this);
 	}
+
 	/**
 	 * Adds metatags that are legal for the file type.
 	 *
@@ -235,8 +392,11 @@ class ianFS {
 		}
 		array_merge($this->metaAllowed, $tag);
 	}
+
 	/**
 	 * Checks to see if the start condition for finding meta has been found.
+	 * Always try and exit quickly from this function to avoid slowing the
+	 * transfer down or using up memory.
 	 *
 	 * @param string $buffer
 	 * @return bool TRUE if the meta is found, FALSE otherwise.
@@ -244,8 +404,11 @@ class ianFS {
 	protected function hasTriggerStart(&$buffer, $location, $filesize) {
 		return false;
 	}
+
 	/**
 	 * Checks to see if the end condition for finding meta has been found.
+	 * Always try and exit quickly from this function to avoid slowing the
+	 * transfer down or using up memory.
 	 *
 	 * @param string $buffer
 	 * @return bool TRUE if the end of meta is found, FALSE otherwise.
@@ -253,6 +416,7 @@ class ianFS {
 	protected function hasTriggerEnd(&$buffer, $location, $filesize) {
 		return false;
 	}
+
 	/**
 	 * The work of modifying the buffer contents is done here. The buffer
 	 * always contains the entire metatag block, so it may be larger than

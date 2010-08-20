@@ -32,13 +32,15 @@ require_once(CLASSPATH.'ianfs.php');
 
 // Relative or full filesystem path to the file.
 $filename = '';
+$newname = '';
 if (intval($_GET['file']) == 1) {
 	$filename = '02 Man of Pain.mp3';
+	$newname = 'Dominion Mine - A Perfect Circle - 02 - Man of Pain.mp3';
 }
 
 // Factory call - file name, file type (defaults to file extension), new file
 // name (defaults to none), path to child classes (defaults to current folder).
-$file = ianFS::load($filename, '', '', CLASSPATH);
+$file = ianFS::load($filename, '', $newname, CLASSPATH);
 
 // Force the browser to display Open/Save dialog instead of helper application.
 $file->forceDownload = true;
