@@ -19,7 +19,7 @@ class mp3 extends ianFS {
 	private function addMetatags() {
 		//parent::addMetaList(array('TT2','COM'));
 	}
-	protected function hasTriggerStart(&$buffer) {
+	protected function hasTriggerStart(&$buffer, $location, $filesize) {
 		$return = false;
 		// ID3 blocks always start with the text "ID3". And we only
 		// want to find it once, thus $this->found is used.
@@ -29,7 +29,7 @@ class mp3 extends ianFS {
 		}
 		return $return;
 	}
-	protected function hasTriggerEnd(&$buffer) {
+	protected function hasTriggerEnd(&$buffer, $location, $filesize) {
 		$return = false;
 		// ID3 blocks always end with chr(255), but we only care if it
 		// occurs AFTER the "ID3" text.
@@ -38,7 +38,7 @@ class mp3 extends ianFS {
 		}
 		return $return;
 	}
-	protected function editMeta(&$buffer) {
+	protected function editMeta(&$buffer, $location, $filesize) {
 		$return = null;
 		// All we do here is strip the ID3 block from the buffer.
 		$return = substr($buffer, 0, strpos($buffer, 'ID3')).substr($buffer, strpos($buffer, chr(255)) + 1);

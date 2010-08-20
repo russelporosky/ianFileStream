@@ -13,7 +13,8 @@ class ianFS {
 	private $chunkCount = 0;		// Chunk counter
 	private $chunkMaximum = 8192;		// Maximum chunk size
 	private $chunkMinimum = 512;		// Minimum chunk size
-	private $chunkSize = -1;		// Non-mutable chunk size used
+	private $chunkSize = -1;		// Immutable chunk size used
+	private $currentPosition = -1;		// Current position within the file
 	private $file;				// File name
 	private $handle = null;			// File handle
 	private $modificationTime = -1;		// File modification time
@@ -78,7 +79,7 @@ class ianFS {
 		$this->newname = $newname;
 	}
 	/**
-	 * Opens file handle for streaming and sets non-mutable chunk size.
+	 * Opens file handle for streaming and sets immutable chunk size.
 	 */
 	public function start() {
 		if (!isset($this->handle) && !$this->open) {
@@ -109,16 +110,19 @@ class ianFS {
 		$return = null;
 		if (isset($this->handle) && $this->open) {
 			if (!feof($this->handle)) {
+				if (!$this->trigger) {
+					$this->currentPosition = ftell($this->handle);
+				}
 				$buffer = fread($this->handle, $this->chunkSize);
-				if ($this->hasTriggerStart($buffer)) {
+				if ($this->hasTriggerStart($buffer, $this->currentPosition, $this->getSize())) {
 					$this->trigger = true;
 				}
 				if ($this->trigger) {
 					$this->buffer .= $buffer;
 					$buffer = null;
 				}
-				if ($this->trigger && $this->hasTriggerEnd($this->buffer)) {
-					$buffer = $this->editMeta($this->buffer);
+				if ($this->trigger && $this->hasTriggerEnd($this->buffer, $this->currentPosition, $this->getSize())) {
+					$buffer = $this->editMeta($this->buffer, $this->currentPosition, $this->getSize());
 					$this->trigger = false;
 					$this->buffer = null;
 				}
@@ -237,7 +241,7 @@ class ianFS {
 	 * @param string $buffer
 	 * @return bool TRUE if the meta is found, FALSE otherwise.
 	 */
-	protected function hasTriggerStart(&$buffer) {
+	protected function hasTriggerStart(&$buffer, $location, $filesize) {
 		return false;
 	}
 	/**
@@ -246,16 +250,18 @@ class ianFS {
 	 * @param string $buffer
 	 * @return bool TRUE if the end of meta is found, FALSE otherwise.
 	 */
-	protected function hasTriggerEnd(&$buffer) {
+	protected function hasTriggerEnd(&$buffer, $location, $filesize) {
 		return false;
 	}
 	/**
-	 * The work of modifying the buffer contents is done here.
+	 * The work of modifying the buffer contents is done here. The buffer
+	 * always contains the entire metatag block, so it may be larger than
+	 * the $chunkMaximum value.
 	 *
 	 * @param string $buffer
 	 * @return string Modified contents.
 	 */
-	protected function editMeta(&$buffer) {
+	protected function editMeta(&$buffer, $location, $filesize) {
 		return $buffer;
 	}
 }
