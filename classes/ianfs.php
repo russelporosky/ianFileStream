@@ -168,6 +168,18 @@ class ianFS {
 	public $forceDownload = false;
 
 	/**
+	 * Use proper MIME type.
+	 *
+	 * If TRUE, the correct MIME type is sent to the browser, which will
+	 * trigger any helper application the browser wants. If FALSE, the file
+	 * is simply returned as part of the loop and can be handled by the
+	 * controller instead. This setting is ignored if forceDownload = TRUE.
+	 *
+	 * @var bool
+	 */
+	public $mime = true;
+
+	/**
 	 * Loads a class based on the filetype. If none exists, uses itself as a
 	 * generic file streamer.
 	 *
@@ -228,6 +240,9 @@ class ianFS {
 		if (!isset($this->handle) && !$this->open) {
 			if ($this->forceDownload) {
 				$this->forceDownload();
+			}
+			if (!$this->forceDownload && $this->mime) {
+				$this->forceDownload($this->getMimeType());
 			}
 			$this->handle = fopen($this->file, 'rb');
 			$this->open = true;
@@ -343,9 +358,12 @@ class ianFS {
 	 * Forces the browser to show the Open/Save dialog box instead of
 	 * displaying a helper application.
 	 */
-	public function forceDownload() {
+	public function forceDownload($mime = null) {
+		if (!isset($mime) || $mime == '') {
+			$mime = 'application/octet-stream';
+		}
 		header('Content-Description: File Transfer');
-		header('Content-Type: application/octet-stream');
+		header('Content-Type: '.$mime);
 		header('Content-Disposition: attachment; filename="'.basename($this->newname)).'";modification-date="'.date('r', $this->getModificationTime()).'";';
 		header('Content-Transfer-Encoding: binary');
 		header('Expires: 0');
@@ -427,5 +445,26 @@ class ianFS {
 	 */
 	protected function editMeta(&$buffer, $location, $filesize) {
 		return $buffer;
+	}
+
+	/**
+	 * Uses PHP 5.3 functions to check the MIME type of a file. You can also
+	 * just install the PECL extension if you run earlier versions of PHP:
+	 * http://pecl.php.net/package/Fileinfo/
+	 *
+	 * Without FileInfo installed, this function returns NULL. This will
+	 * trigger ianFS to deliver 'application/octet-stream' as the MIME type,
+	 * which is functially identical to forceDownload=TRUE.
+	 *
+	 * @return string
+	 */
+	private function getMimeType() {
+		$return = null;
+		if (function_exists('finfo_open') && function_exists('finfo_file') && function_exists('finfo_close')) {
+			$fileinfo = finfo_open(FILEINFO_MIME);
+			$return = finfo_file($fileinfo, $this->file);
+			finfo_close($fileinfo);
+		}
+		return $return;
 	}
 }
