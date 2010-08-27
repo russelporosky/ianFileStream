@@ -45,6 +45,10 @@ $file = ianFS::load($filename, '', $newname, CLASSPATH);
 // Force the browser to display Open/Save dialog instead of helper application.
 $file->forceDownload = true;
 
+// Prevent the server from sending any MIME type to the browser. File should
+// display as if it were text. This is ignored if forceDownload=TRUE.
+$file->mime = false;
+
 // Set a chunk size in bytes - between 512 and 8192.
 $file->chunk = 1024;
 

@@ -10,6 +10,59 @@
 
 class ianFS {
 	/**
+	 * Array of valid metatags.
+	 *
+	 * @var array
+	 */
+	protected $metaAllowed = array();
+
+	/**
+	 * Overlap between chunks, in bytes.
+	 *
+	 * The overlap is to ensure that a complete trigger can be found. It
+	 * should be set to 1 byte longer than the maximum trigger length. For
+	 * example, the trigger for ID3v2 tags is 'ID3', so overlap should be 4.
+	 *
+	 * @var int
+	 */
+	protected $overlap = 0;
+
+	/**
+	 * Size of each chunk, in bytes.
+	 *
+	 * The actual chunk size used is determined by chunkMaximum and
+	 * chunkMinimum if this value is outside of their range.
+	 *
+	 * @var int
+	 */
+	public $chunk = 4096;
+
+	/**
+	 * Force browser download.
+	 *
+	 * Using headers, this will force the browser to display an Open/Save
+	 * dialog box instead of loading the browser's default helper
+	 * application for this file type.
+	 *
+	 * @var bool
+	 */
+	public $forceDownload = false;
+
+	/**
+	 * Use proper MIME type.
+	 *
+	 * If TRUE, the correct MIME type is sent to the browser, which will
+	 * trigger any helper application the browser wants. If FALSE, the file
+	 * is simply returned as part of the loop and can be handled by the
+	 * controller instead. This setting is ignored if forceDownload=TRUE.
+	 * If FileInfo is not installed (included with PHP 5.3+), setting this
+	 * to TRUE and forceDownload=FALSE works the same as forceDownload=TRUE.
+	 *
+	 * @var bool
+	 */
+	public $mime = true;
+
+	/**
 	 * Buffer storage.
 	 *
 	 * Temporary buffer storage is only used if the hasTriggerStart() and
@@ -112,10 +165,23 @@ class ianFS {
 	 * This remains TRUE between hasTriggerStart() and hasTriggerEnd(). Once
 	 * editMeta() is called, value becomes FALSE.
 	 *
-	 *
 	 * @var bool
 	 */
 	private $trigger = false;
+
+	/**
+	 * The end of the current metatag block has been found.
+	 *
+	 * @var bool
+	 */
+	private $triggerEnd = false;
+
+	/**
+	 * The start of the current metatag block has been found.
+	 *
+	 * @var bool
+	 */
+	private $triggerStart = false;
 
 	/**
 	 * File type (file extentsion, usually).
@@ -127,57 +193,6 @@ class ianFS {
 	 * @var string
 	 */
 	private $type = null;
-
-	/**
-	 * Array of valid metatags.
-	 *
-	 * @var array
-	 */
-	protected $metaAllowed = array();
-
-	/**
-	 * Overlap between chunks, in bytes.
-	 *
-	 * The overlap is to ensure that a complete trigger can be found. It
-	 * should be set to 1 byte longer than the maximum trigger length. For
-	 * example, the trigger for ID3v2 tags is 'ID3', so overlap should be 4.
-	 *
-	 * @var int
-	 */
-	protected $overlap = 0;
-
-	/**
-	 * Size of each chunk, in bytes.
-	 *
-	 * The actual chunk size used is determined by chunkMaximum and
-	 * chunkMinimum if this value is outside of their range.
-	 *
-	 * @var int
-	 */
-	public $chunk = 4096;
-
-	/**
-	 * Force browser download.
-	 *
-	 * Using headers, this will force the browser to display an Open/Save
-	 * dialog box instead of loading the browser's default helper
-	 * application for this file type.
-	 *
-	 * @var bool
-	 */
-	public $forceDownload = false;
-
-	/**
-	 * Use proper MIME type.
-	 *
-	 * If TRUE, the correct MIME type is sent to the browser, which will
-	 * trigger any helper application the browser wants. If FALSE, the file
-	 * is simply returned as part of the loop and can be handled by the
-	 * controller instead. This setting is ignored if forceDownload = TRUE.
-	 *
-	 * @var bool
-	 */
-	public $mime = true;
 
 	/**
 	 * Loads a class based on the filetype. If none exists, uses itself as a
@@ -246,6 +261,7 @@ class ianFS {
 			}
 			$this->handle = fopen($this->file, 'rb');
 			$this->open = true;
+			// Make sure the chunk size is between the minimum and maximum.
 			$this->chunkSize = $this->chunk;
 			if ($this->chunkSize < $this->chunkMinimum) {
 				$this->chunkSize = $this->chunkMinimum;
@@ -254,6 +270,10 @@ class ianFS {
 			if ($this->chunkSize > $this->chunkMaximum) {
 				$this->chunkSize = $this->chunkMaximum;
 				$this->chunk = $this->chunkMaximum;
+			}
+			// Make sure the overlap size is smaller than the chunk size.
+			if ($this->overlap > $this->chunkSize) {
+				$this->overlap = 0;
 			}
 		}
 	}
@@ -270,11 +290,18 @@ class ianFS {
 		if (isset($this->handle) && $this->open) {
 			if (!feof($this->handle)) {
 				if (!$this->trigger) {
+					// Store position only if we are not between triggers.
 					$this->currentPosition = ftell($this->handle);
+					// Make sure $triggerEnd is FALSE
+					$this->triggerEnd = false;
 				}
 				$buffer = fread($this->handle, $this->chunkSize);
-				if ($this->hasTriggerStart($buffer, $this->currentPosition, $this->getSize())) {
+				$len = strlen($buffer);
+				// Initial trigger detection.
+				if (!$this->trigger && $this->hasTriggerStart($buffer, $this->currentPosition, $this->getSize())) {
 					$this->trigger = true;
+					$this->triggerStart = true;
+					$this->triggerEnd = false;
 				}
 				if ($this->trigger) {
 					$this->buffer .= $buffer;
@@ -283,7 +310,16 @@ class ianFS {
 				if ($this->trigger && $this->hasTriggerEnd($this->buffer, $this->currentPosition, $this->getSize())) {
 					$buffer = $this->editMeta($this->buffer, $this->currentPosition, $this->getSize());
 					$this->trigger = false;
+					$this->triggerStart = false;
+					$this->triggerEnd = true;
 					$this->buffer = null;
+				}
+				// If the trigger hasn't been triggered and this isn't the last chunk of the file, lop off the overlap for the next loop.
+				if (!$this->trigger && !$this->triggerEnd && $len == $this->chunkSize) {
+					if ($len >= $this->overlap) {
+						$buffer = substr($buffer, 0, $len - $this->overlap);
+						fseek($this->handle, -$this->overlap, SEEK_CUR);
+					}
 				}
 				$return = $buffer;
 				ob_flush();

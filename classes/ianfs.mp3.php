@@ -10,18 +10,39 @@
 
 class mp3 extends ianFS {
 	/**
-	 * Has the ID3v2 block been found?
+	 * Has the ID3v2.2 block been found?
 	 *
 	 * @var bool
 	 */
-	private $foundID3v2 = false;
+	private $foundID3v22 = false;
+
+	/**
+	 * Has the ID3v2.3 block been found?
+	 *
+	 * @var bool
+	 */
+	private $foundID3v23 = false;
+
+	/**
+	 * Has the ID3v2.4 block been found?
+	 *
+	 * @var bool
+	 */
+	private $foundID3v24 = false;
 
 	/**
 	 * Has the ID3v1 block been found?
 	 *
 	 * @var bool
 	 */
-	private $foundID3v1 = false;
+	private $foundID3v10 = false;
+
+	/**
+	 * Has the ID3v1.1 block been found?
+	 *
+	 * @var bool
+	 */
+	private $foundID3v11 = false;
 
 	/**
 	 * Calls parent constructor, sets the overlap value (minimum trigger
@@ -33,7 +54,7 @@ class mp3 extends ianFS {
 	 */
 	public function __construct($file, $filetype, $newname) {
 		parent::__construct($file, $filetype, $newname);
-		$this->overlap = 4;
+		$this->overlap = 5;
 		$this->addMetatags();
 	}
 
@@ -56,8 +77,8 @@ class mp3 extends ianFS {
 		$return = false;
 		// ID3 blocks always start with the text "ID3". And we only
 		// want to find it once, thus $this->found is used.
-		if (!$this->foundID3v2 && strpos($buffer, 'ID3') !== false) {
-			$this->foundID3v2 = true;
+		if (!$this->foundID3v22 && strpos($buffer, 'ID3') !== false) {
+			$this->foundID3v22 = true;
 			$return = true;
 		}
 		return $return;
@@ -75,7 +96,7 @@ class mp3 extends ianFS {
 		$return = false;
 		// ID3 blocks always end with chr(255), but we only care if it
 		// occurs AFTER the "ID3" text.
-		if ($this->foundID3v2 && strpos($buffer, chr(255)) !== false && (strpos($buffer, chr(255)) > strpos($buffer, 'ID3'))) {
+		if ($this->foundID3v22 && strpos($buffer, chr(255)) !== false && (strpos($buffer, chr(255)) > strpos($buffer, 'ID3'))) {
 			$return = true;
 		}
 		return $return;
